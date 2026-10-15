@@ -448,7 +448,7 @@ def place(
     :param fields: The fields specifying the types of place data to return,
                    separated by a comma. For full details see:
                    https://cloud.google.com/maps-platform/user-guide/product-changes/#places
-    :type input: list
+    :type fields: list
 
     :param language: The language in which to return results.
     :type language: string
