@@ -49,14 +49,15 @@ def addressvalidation(client, addressLines, regionCode=None , locality=None, ena
     The Google Maps Address Validation API returns a verification of an address
     See https://developers.google.com/maps/documentation/address-validation/overview
     request must include parameters below.
+
     :param addressLines: The address to validate
     :type addressLines: array 
     :param regionCode: (optional) The country code
     :type regionCode: string  
     :param locality: (optional) Restrict to a locality, ie:Mountain View
     :type locality: string
-    :param enableUspsCass For the "US" and "PR" regions only, you can optionally enable the Coding Accuracy Support System (CASS) from the United States Postal Service (USPS)
-    :type locality: boolean
+    :param enableUspsCass: For the "US" and "PR" regions only, you can optionally enable the Coding Accuracy Support System (CASS) from the United States Postal Service (USPS)
+    :type enableUspsCass: boolean
     """
 
     params = {
