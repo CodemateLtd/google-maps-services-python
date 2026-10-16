@@ -23,25 +23,23 @@ _ADDRESSVALIDATION_BASE_URL = "https://addressvalidation.googleapis.com"
 
 
 def _addressvalidation_extract(response):
-    """
-    Mimics the exception handling logic in ``client._get_body``, but
-    for addressvalidation which uses a different response format.
-    """
-    body = response.json()
-    return body
+    """Extracts an Address Validation response, raising API or HTTP errors."""
+    if 200 <= response.status_code < 300:
+        return response.json()
 
-    # if response.status_code in (200, 404):
-    #     return body
+    try:
+        body = response.json()
+    except ValueError:
+        raise exceptions.HTTPError(response.status_code)
 
-    # try:
-    #     error = body["error"]["errors"][0]["reason"]
-    # except KeyError:
-    #     error = None
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            status = error.get("status")
+            if isinstance(status, str) and status:
+                raise exceptions.ApiError(status, error.get("message"))
 
-    # if response.status_code == 403:
-    #     raise exceptions._OverQueryLimit(response.status_code, error)
-    # else:
-    #     raise exceptions.ApiError(response.status_code, error)
+    raise exceptions.HTTPError(response.status_code)
 
 
 def addressvalidation(client, addressLines, regionCode=None , locality=None, enableUspsCass=None):
