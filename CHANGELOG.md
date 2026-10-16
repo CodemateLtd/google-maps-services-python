@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixed
+- Omit `enableUspsCass` from Address Validation requests when unset, while preserving explicit `True` and `False` values.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
