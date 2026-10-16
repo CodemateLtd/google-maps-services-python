@@ -18,6 +18,8 @@
 
 """Tests for the addressvalidation module."""
 
+import json
+
 import responses
 
 import googlemaps
@@ -29,20 +31,37 @@ class AddressValidationTest(TestCase):
         self.key = "AIzaSyD_sJl0qMA65CYHMBokVfMNA7AKyt5ERYs"
         self.client = googlemaps.Client(self.key)
 
-    @responses.activate
-    def test_simple_addressvalidation(self):
-        responses.add(
-            responses.POST,
-            "https://addressvalidation.googleapis.com/v1:validateAddress",
-            body='{"address": {"regionCode": "US","locality": "Mountain View","addressLines": "1600 Amphitheatre Pkwy"},"enableUspsCass":true}',
-            status=200,
-            content_type="application/json",
-        )
+    def test_enable_usps_cass_serialization(self):
+        address = {
+            "addressLines": ["1600 Amphitheatre Parkway"],
+            "regionCode": "US",
+            "locality": "Mountain View",
+        }
+        cases = [
+            ({}, {"address": address}),
+            ({"enableUspsCass": True}, {
+                "address": address, "enableUspsCass": True,
+            }),
+            ({"enableUspsCass": False}, {
+                "address": address, "enableUspsCass": False,
+            }),
+        ]
+        for kwargs, expected in cases:
+            with self.subTest(kwargs=kwargs):
+                with responses.RequestsMock() as http:
+                    http.add(
+                        responses.POST,
+                        "https://addressvalidation.googleapis.com/v1:validateAddress",
+                        json={"result": {}},
+                        status=200,
+                    )
 
-        results = self.client.addressvalidation('1600 Amphitheatre Pk', regionCode='US', locality='Mountain View', enableUspsCass=True)
+                    self.client.addressvalidation(
+                        address["addressLines"],
+                        regionCode=address["regionCode"],
+                        locality=address["locality"],
+                        **kwargs
+                    )
 
-        self.assertEqual(1, len(responses.calls))
-        self.assertURLEqual(
-            "https://addressvalidation.googleapis.com/v1:validateAddress?" "key=%s" % self.key,
-            responses.calls[0].request.url,
-        )
+                    body = json.loads(http.calls[0].request.body)
+                    self.assertEqual(expected, body)

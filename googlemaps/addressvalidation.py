@@ -71,7 +71,7 @@ def addressvalidation(client, addressLines, regionCode=None , locality=None, ena
     if locality is not None:
         params["address"]["locality"] = locality
 
-    if enableUspsCass is not False or enableUspsCass is not None:
+    if enableUspsCass is not None:
         params["enableUspsCass"] = enableUspsCass
 
     return client._request("/v1:validateAddress", {},  # No GET params
