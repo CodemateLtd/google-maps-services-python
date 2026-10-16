@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixed
+- Raise API or HTTP exceptions for unsuccessful Address Validation responses instead of returning error payloads.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
