@@ -25,6 +25,7 @@ import collections
 import logging
 from datetime import datetime
 from datetime import timedelta
+from email.utils import parsedate_tz, mktime_tz
 import functools
 import hashlib
 import hmac
@@ -108,9 +109,9 @@ class Client:
             appropriate amount of time before it runs the current query.
         :type queries_per_minute: int
 
-        :param retry_over_query_limit: If True, requests that result in a
-            response indicating the query rate limit was exceeded will be
-            retried. Defaults to True.
+        :param retry_over_query_limit: If True, requests that result in an
+            HTTP 429 or a response indicating the query rate limit was exceeded
+            will be retried. Defaults to True.
         :type retry_over_query_limit: bool
 
         :param experience_id: The value for the HTTP header field name
@@ -238,7 +239,8 @@ class Client:
 
     def _request(self, url, params, first_request_time=None, retry_counter=0,
              base_url=None, accepts_clientid=True,
-             extract_body=None, requests_kwargs=None, post_json=None):
+             extract_body=None, requests_kwargs=None, post_json=None,
+             retry_delay=None):
         """Performs HTTP GET/POST with credentials, returning the body as
         JSON.
 
@@ -273,6 +275,11 @@ class Client:
             per-request basis.
         :type requests_kwargs: dict
 
+        :param retry_delay: Internal delay in seconds for the next HTTP 429
+            retry, including Retry-After or jittered backoff. None retains the
+            existing backoff behavior for other retryable responses.
+        :type retry_delay: float
+
         :raises ApiError: when the API returns an error.
         :raises Timeout: if the request timed out.
         :raises TransportError: when something went wrong while trying to
@@ -290,13 +297,19 @@ class Client:
             raise googlemaps.exceptions.Timeout()
 
         if retry_counter > 0:
-            # 0.5 * (1.5 ^ i) is an increased sleep time of 1.5x per iteration,
-            # starting at 0.5s when retry_counter=0. The first retry will occur
-            # at 1, so subtract that first.
-            delay_seconds = 0.5 * 1.5 ** (retry_counter - 1)
+            if retry_delay is None:
+                # 0.5 * (1.5 ^ i) is an increased sleep time of 1.5x per
+                # iteration, starting at 0.5s for the first retry.
+                delay_seconds = 0.5 * 1.5 ** (retry_counter - 1)
 
-            # Jitter this value by 50% and pause.
-            time.sleep(delay_seconds * (random.random() + 0.5))
+                # Jitter this value by 50% and pause.
+                time.sleep(delay_seconds * (random.random() + 0.5))
+            else:
+                # HTTP 429 waits must fit within the remaining retry budget.
+                remaining = (self.retry_timeout - elapsed).total_seconds()
+                if remaining <= 0:
+                    raise googlemaps.exceptions.Timeout()
+                time.sleep(min(retry_delay, remaining))
 
         authed_url = self._generate_auth_url(url, params, accepts_clientid)
 
@@ -311,6 +324,11 @@ class Client:
             requests_method = self.session.post
             final_requests_kwargs["json"] = post_json
 
+        # Backoff can exhaust the budget, including mixed retryable statuses.
+        if retry_counter > 0:
+            if datetime.now() - first_request_time >= self.retry_timeout:
+                raise googlemaps.exceptions.Timeout()
+
         try:
             response = requests_method(base_url + authed_url,
                                        **final_requests_kwargs)
@@ -318,6 +336,32 @@ class Client:
             raise googlemaps.exceptions.Timeout()
         except Exception as e:
             raise googlemaps.exceptions.TransportError(e)
+
+        if response.status_code == 429:
+            response.close()
+            # Handle rate limits before custom extractors can return the body.
+            if not self.retry_over_query_limit:
+                raise googlemaps.exceptions.HTTPError(response.status_code)
+
+            retry_after = response.headers.get("Retry-After", "").strip()
+            retry_delay = None
+            if re.match(r"^[0-9]+$", retry_after):
+                retry_delay = float(retry_after)
+            else:
+                try:
+                    retry_date = parsedate_tz(retry_after)
+                    if retry_date is not None:
+                        retry_delay = max(0, mktime_tz(retry_date) - time.time())
+                except (TypeError, ValueError, OverflowError):
+                    pass
+
+            if retry_delay is None:
+                retry_delay = 0.5 * 1.5 ** retry_counter * (random.random() + 0.5)
+
+            return self._request(url, params, first_request_time,
+                                 retry_counter + 1, base_url, accepts_clientid,
+                                 extract_body, requests_kwargs, post_json,
+                                 retry_delay=retry_delay)
 
         if response.status_code in _RETRIABLE_STATUSES:
             # Retry request.

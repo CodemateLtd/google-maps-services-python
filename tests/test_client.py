@@ -19,6 +19,8 @@
 """Tests for client module."""
 
 import time
+from datetime import datetime, timedelta
+from unittest import mock
 
 import responses
 import requests
@@ -430,3 +432,307 @@ class ClientTest(TestCase):
             client._request("/foo", {})
 
         self.assertEqual(1, len(responses.calls))
+
+
+class Http429RetryTest(TestCase):
+    def setUp(self):
+        self.elapsed = 0
+        datetime_patch = mock.patch("googlemaps.client.datetime")
+        clock = datetime_patch.start()
+        self.addCleanup(datetime_patch.stop)
+        clock.now.side_effect = lambda: datetime(2020, 1, 1) + timedelta(
+            seconds=self.elapsed
+        )
+
+        time_patch = mock.patch(
+            "googlemaps.client.time.time",
+            side_effect=lambda: 1577836800 + self.elapsed,
+        )
+        time_patch.start()
+        self.addCleanup(time_patch.stop)
+
+        sleep_patch = mock.patch(
+            "googlemaps.client.time.sleep", side_effect=self._advance_time
+        )
+        self.sleep = sleep_patch.start()
+        self.addCleanup(sleep_patch.stop)
+
+        random_patch = mock.patch("googlemaps.client.random.random", return_value=0.5)
+        self.random = random_patch.start()
+        self.addCleanup(random_patch.stop)
+
+    def _advance_time(self, seconds):
+        self.elapsed += seconds
+
+    def _add_response(self, status, headers=None, body=None):
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            status=status,
+            headers=headers,
+            body=body if body is not None else '{"status":"OK","results":[]}',
+            content_type="application/json",
+        )
+
+    @responses.activate
+    def test_http429_recovery(self):
+        self._add_response(429, body="Too many requests")
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf")
+
+        client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.assertEqual(responses.calls[0].request.url, responses.calls[1].request.url)
+        self.sleep.assert_called_once_with(0.5)
+
+    @responses.activate
+    def test_http429_opt_out(self):
+        self._add_response(429, headers={"Retry-After": "3"})
+        client = googlemaps.Client(key="AIzaasdf", retry_over_query_limit=False)
+
+        with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+            client.geocode("Sesame St.")
+
+        self.assertEqual(429, error.exception.status_code)
+        self.assertEqual(1, len(responses.calls))
+        self.sleep.assert_not_called()
+
+    @responses.activate
+    def test_http429_opt_out_precedes_custom_extractor(self):
+        self._add_response(429, body="Too many requests")
+        client = googlemaps.Client(key="AIzaasdf", retry_over_query_limit=False)
+        extract_body = mock.Mock(return_value=b"Too many requests")
+
+        with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+            client._request(
+                "/maps/api/geocode/json", {}, extract_body=extract_body
+            )
+
+        self.assertEqual(429, error.exception.status_code)
+        self.assertEqual(1, len(responses.calls))
+        extract_body.assert_not_called()
+        self.sleep.assert_not_called()
+
+    @responses.activate
+    def test_http429_streaming_photo_recovery(self):
+        url = "https://maps.googleapis.com/maps/api/place/photo"
+        responses.add(responses.GET, url, status=429, body="Too many requests")
+        responses.add(responses.GET, url, status=200, body=b"photo bytes")
+        client = googlemaps.Client(key="AIzaasdf")
+
+        self.assertEqual(
+            b"photo bytes", b"".join(client.places_photo("reference", max_width=100))
+        )
+
+        self.assertEqual(2, len(responses.calls))
+        self.assertFalse(responses.calls[0].response._content_consumed)
+        self.assertTrue(responses.calls[0].response.raw.closed)
+        self.sleep.assert_called_once_with(0.5)
+
+    @responses.activate
+    def test_retry_after_seconds(self):
+        for header, expected_delay in [("0", 0), ("3", 3)]:
+            with self.subTest(header=header):
+                responses.reset()
+                self.sleep.reset_mock()
+                self._add_response(429, headers={"Retry-After": header})
+                self._add_response(200)
+                client = googlemaps.Client(key="AIzaasdf")
+
+                client.geocode("Sesame St.")
+
+                self.assertEqual(2, len(responses.calls))
+                self.sleep.assert_called_once_with(expected_delay)
+
+    @responses.activate
+    def test_retry_after_http_date(self):
+        self._add_response(
+            429, headers={"Retry-After": "Wed, 01 Jan 2020 00:00:04 GMT"}
+        )
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf")
+
+        client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.sleep.assert_called_once_with(4)
+
+    @responses.activate
+    def test_retry_after_past_http_date(self):
+        self._add_response(
+            429, headers={"Retry-After": "Tue, 31 Dec 2019 23:59:59 GMT"}
+        )
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf")
+
+        client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.sleep.assert_called_once_with(0)
+
+    @responses.activate
+    def test_invalid_retry_after_uses_jitter(self):
+        self.random.return_value = 0.25
+        for header in [
+            "", "not a date", "-1", "1.5", "NaN", "Infinity",
+            "Wed, 01 Jan 10000 00:00:00 GMT",
+        ]:
+            with self.subTest(header=header):
+                responses.reset()
+                self.sleep.reset_mock()
+                self._add_response(429, headers={"Retry-After": header})
+                self._add_response(200)
+                client = googlemaps.Client(key="AIzaasdf")
+
+                client.geocode("Sesame St.")
+
+                self.assertEqual(2, len(responses.calls))
+                self.sleep.assert_called_once_with(0.375)
+
+    @responses.activate
+    def test_http429_timeout_exhaustion(self):
+        self._add_response(429)
+        client = googlemaps.Client(key="AIzaasdf", retry_timeout=1)
+
+        with self.assertRaises(googlemaps.exceptions.Timeout):
+            client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.assertEqual([mock.call(0.5), mock.call(0.5)], self.sleep.call_args_list)
+        self.assertEqual(1, self.elapsed)
+
+    @responses.activate
+    def test_retry_after_cannot_exceed_remaining_budget(self):
+        def rate_limited(request):
+            self.elapsed += 1
+            return 429, {"Retry-After": "10"}, "Too many requests"
+
+        responses.add_callback(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            callback=rate_limited,
+        )
+        client = googlemaps.Client(key="AIzaasdf", retry_timeout=3)
+
+        with self.assertRaises(googlemaps.exceptions.Timeout):
+            client.geocode("Sesame St.")
+
+        self.assertEqual(1, len(responses.calls))
+        self.sleep.assert_called_once_with(2)
+        self.assertEqual(3, self.elapsed)
+
+    @responses.activate
+    def test_retry_after_date_cannot_exceed_budget(self):
+        self._add_response(
+            429, headers={"Retry-After": "Wed, 01 Jan 2020 00:01:00 GMT"}
+        )
+        client = googlemaps.Client(key="AIzaasdf", retry_timeout=2)
+
+        with self.assertRaises(googlemaps.exceptions.Timeout):
+            client.geocode("Sesame St.")
+
+        self.assertEqual(1, len(responses.calls))
+        self.sleep.assert_called_once_with(2)
+        self.assertEqual(2, self.elapsed)
+
+    @responses.activate
+    def test_retry_stops_if_sleep_overshoots_deadline(self):
+        self._add_response(429, headers={"Retry-After": "1"})
+        client = googlemaps.Client(key="AIzaasdf", retry_timeout=2)
+        self.sleep.side_effect = lambda seconds: self._advance_time(seconds + 1)
+
+        with self.assertRaises(googlemaps.exceptions.Timeout):
+            client.geocode("Sesame St.")
+
+        self.assertEqual(1, len(responses.calls))
+        self.sleep.assert_called_once_with(1)
+        self.assertEqual(2, self.elapsed)
+
+    @responses.activate
+    def test_mixed_http429_and_server_error_stops_at_deadline(self):
+        self._add_response(429, headers={"Retry-After": "1"})
+        self._add_response(503, headers={"Retry-After": "100"})
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf", retry_timeout=1.75)
+
+        with self.assertRaises(googlemaps.exceptions.Timeout):
+            client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.assertEqual([mock.call(1), mock.call(0.75)], self.sleep.call_args_list)
+        self.assertEqual(1.75, self.elapsed)
+
+    @responses.activate
+    def test_request_can_exhaust_budget_before_retry(self):
+        for request_duration in [2, 3]:
+            with self.subTest(request_duration=request_duration):
+                responses.reset()
+                self.sleep.reset_mock()
+                self.elapsed = 0
+
+                def rate_limited(request):
+                    self.elapsed += request_duration
+                    return 429, {"Retry-After": "0"}, "Too many requests"
+
+                responses.add_callback(
+                    responses.GET,
+                    "https://maps.googleapis.com/maps/api/geocode/json",
+                    callback=rate_limited,
+                )
+                client = googlemaps.Client(key="AIzaasdf", retry_timeout=2)
+
+                with self.assertRaises(googlemaps.exceptions.Timeout):
+                    client.geocode("Sesame St.")
+
+                self.assertEqual(1, len(responses.calls))
+                self.sleep.assert_not_called()
+
+    @responses.activate
+    def test_retry_after_is_per_attempt(self):
+        self._add_response(429, headers={"Retry-After": "4"})
+        self._add_response(429)
+        self._add_response(200)
+        self._add_response(429)
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf")
+
+        client.geocode("Sesame St.")
+        client.geocode("Another St.")
+
+        self.assertEqual(5, len(responses.calls))
+        self.assertEqual(
+            [mock.call(4), mock.call(0.75), mock.call(0.5)], self.sleep.call_args_list
+        )
+
+    @responses.activate
+    def test_other_http_retries_ignore_retry_after_and_rate_limit_opt_out(self):
+        for status in [500, 503, 504]:
+            with self.subTest(status=status):
+                responses.reset()
+                self.sleep.reset_mock()
+                self._add_response(status, headers={"Retry-After": "10"})
+                self._add_response(200)
+                client = googlemaps.Client(
+                    key="AIzaasdf", retry_over_query_limit=False
+                )
+
+                client.geocode("Sesame St.")
+
+                self.assertEqual(2, len(responses.calls))
+                self.sleep.assert_called_once_with(0.5)
+
+    @responses.activate
+    def test_json_over_query_limit_keeps_existing_backoff(self):
+        self._add_response(
+            200,
+            headers={"Retry-After": "10"},
+            body='{"status":"OVER_QUERY_LIMIT"}',
+        )
+        self._add_response(200)
+        client = googlemaps.Client(key="AIzaasdf")
+
+        client.geocode("Sesame St.")
+
+        self.assertEqual(2, len(responses.calls))
+        self.sleep.assert_called_once_with(0.5)
