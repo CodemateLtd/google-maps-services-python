@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixed
+- Raise `HTTPError` for non-2xx Places Photo responses instead of streaming error bodies as image data.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
