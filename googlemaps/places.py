@@ -132,6 +132,9 @@ def find_place(
     The text input can be any kind of Places data, for example,
     a name, address, or phone number.
 
+    This method uses Places API (Legacy). For migration guidance, see:
+    https://developers.google.com/maps/documentation/places/web-service/legacy/migrate-overview
+
     :param input: The text input specifying which place to search for (for
                   example, a name, address, or phone number).
     :type input: string
@@ -141,13 +144,13 @@ def find_place(
     :type input_type: string
 
     :param fields: The fields specifying the types of place data to return. For full details see:
-                   https://developers.google.com/places/web-service/search#FindPlaceRequests
+                   https://developers.google.com/maps/documentation/places/web-service/legacy/search-find-place#fields
     :type fields: list
 
     :param location_bias: Prefer results in a specified area, by specifying
                           either a radius plus lat/lng, or two lat/lng pairs
                           representing the points of a rectangle. See:
-                          https://developers.google.com/places/web-service/search#FindPlaceRequests
+                          https://developers.google.com/maps/documentation/places/web-service/legacy/search-find-place#locationbias
     :type location_bias: string
 
     :param language: The language in which to return results.
@@ -211,6 +214,9 @@ def places(
     """
     Places search.
 
+    This method uses Places API (Legacy). For migration guidance, see:
+    https://developers.google.com/maps/documentation/places/web-service/legacy/migrate-overview
+
     :param query: The text string on which to search, for example: "restaurant".
     :type query: string
 
@@ -240,11 +246,11 @@ def places(
 
     :param type: Restricts the results to places matching the specified type.
         The full list of supported types is available here:
-        https://developers.google.com/places/supported_types
+        https://developers.google.com/maps/documentation/places/web-service/legacy/supported_types#table1
     :type type: string
 
     :param region: The region code, optional parameter.
-        See more @ https://developers.google.com/places/web-service/search
+        See more @ https://developers.google.com/maps/documentation/places/web-service/legacy/search-text#region
     :type region: string
 
     :param page_token: Token from a previous search that when provided will
@@ -289,6 +295,9 @@ def places_nearby(
     """
     Performs nearby search for places.
 
+    This method uses Places API (Legacy). For migration guidance, see:
+    https://developers.google.com/maps/documentation/places/web-service/legacy/migrate-overview
+
     :param location: The latitude/longitude value for which you wish to obtain the
                      closest, human-readable address.
     :type location: string, dict, list, or tuple
@@ -297,7 +306,7 @@ def places_nearby(
     :type radius: int
 
     :param region: The region code, optional parameter.
-        See more @ https://developers.google.com/places/web-service/search
+        See more @ https://developers.google.com/maps/documentation/places/web-service/legacy/search-nearby
     :type region: string
 
     :param keyword: A term to be matched against all content that Google has
@@ -330,7 +339,7 @@ def places_nearby(
 
     :param type: Restricts the results to places matching the specified type.
         The full list of supported types is available here:
-        https://developers.google.com/places/supported_types
+        https://developers.google.com/maps/documentation/places/web-service/legacy/supported_types#table1
     :type type: string
 
     :param page_token: Token from a previous search that when provided will
@@ -437,6 +446,9 @@ def place(
     """
     Comprehensive details for an individual place.
 
+    This method uses Places API (Legacy). For migration guidance, see:
+    https://developers.google.com/maps/documentation/places/web-service/legacy/migrate-overview
+
     :param place_id: A textual identifier that uniquely identifies a place,
         returned from a Places search.
     :type place_id: string
@@ -447,7 +459,7 @@ def place(
 
     :param fields: The fields specifying the types of place data to return,
                    separated by a comma. For full details see:
-                   https://cloud.google.com/maps-platform/user-guide/product-changes/#places
+                   https://developers.google.com/maps/documentation/places/web-service/legacy/place-data-fields
     :type input: list
 
     :param language: The language in which to return results.
@@ -561,6 +573,9 @@ def places_autocomplete(
     Returns Place predictions given a textual search string and optional
     geographic bounds.
 
+    This method uses Places API (Legacy). For migration guidance, see:
+    https://developers.google.com/maps/documentation/places/web-service/legacy/migrate-overview
+
     :param input_text: The text string on which to search.
     :type input_text: string
 
@@ -592,7 +607,7 @@ def places_autocomplete(
 
     :param types: Restricts the results to places matching the specified type.
         The full list of supported types is available here:
-        https://developers.google.com/places/web-service/autocomplete#place_types
+        https://developers.google.com/maps/documentation/places/web-service/legacy/autocomplete#types
     :type types: string
 
     :param components: A component filter for which you wish to obtain a geocode.
