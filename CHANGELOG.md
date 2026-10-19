@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixed
+- Retry HTTP 429 responses within `retry_timeout`, honoring valid `Retry-After` headers and `retry_over_query_limit`.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
