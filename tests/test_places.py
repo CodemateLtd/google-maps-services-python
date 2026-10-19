@@ -20,7 +20,7 @@
 
 import uuid
 
-from types import GeneratorType
+from unittest import mock
 
 import responses
 
@@ -185,19 +185,88 @@ class PlacesTest(TestCase):
             )
 
     @responses.activate
-    def test_photo(self):
+    def test_photo_streams_binary_data_lazily(self):
         url = "https://maps.googleapis.com/maps/api/place/photo"
-        responses.add(responses.GET, url, status=200)
-
-        ref = "CnRvAAAAwMpdHeWlXl-lH0vp7lez4znKPIWSWvgvZFISdKx45AwJVP1Qp37YOrH7sqHMJ8C-vBDC546decipPHchJhHZL94RcTUfPa1jWzo-rSHaTlbNtjh-N68RkcToUCuY9v2HNpo5mziqkir37WU8FJEqVBIQ4k938TI3e7bf8xq-uwDZcxoUbO_ZJzPxremiQurAYzCTwRhE_V0"
-        response = self.client.places_photo(ref, max_width=100)
-
-        self.assertTrue(isinstance(response, GeneratorType))
-        self.assertEqual(1, len(responses.calls))
-        self.assertURLEqual(
-            "%s?maxwidth=100&photoreference=%s&key=%s" % (url, ref, self.key),
-            responses.calls[0].request.url,
+        image = b"\xff\xd8\xff\xe0\x00\x10binary photo\x00\xff\xd9"
+        responses.add(
+            responses.GET, url, body=image, status=200,
+            content_type="image/jpeg",
         )
+
+        chunks = self.client.places_photo("photo-reference", max_width=100)
+        response = responses.calls[0].response
+        self.assertFalse(response._content_consumed)
+        self.assertEqual(0, response.raw.tell())
+
+        self.assertEqual(image, b"".join(chunks))
+
+    def test_photo_rejects_http_errors_without_consuming_body(self):
+        url = "https://maps.googleapis.com/maps/api/place/photo"
+        errors = (
+            (300, "Multiple choices", "text/plain"),
+            (400, '{"error": "Invalid photo reference"}', "application/json"),
+            (403, "Access denied", "text/plain"),
+            (404, "<html>Photo not found</html>", "text/html"),
+            (429, "Too many requests", "text/plain"),
+        )
+        for status, body, content_type in errors:
+            with self.subTest(status=status):
+                with responses.RequestsMock() as rsps:
+                    rsps.add(
+                        responses.GET, url, body=body, status=status,
+                        content_type=content_type,
+                    )
+
+                    # The call itself must fail, before an iterator is exposed.
+                    with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+                        self.client.places_photo("photo-reference", max_width=100)
+
+                    self.assertEqual(status, error.exception.status_code)
+                    self.assertEqual(1, len(rsps.calls))
+                    response = rsps.calls[0].response
+                    self.assertFalse(response._content_consumed)
+                    self.assertTrue(response.raw.closed)
+
+    @mock.patch("googlemaps.client.time.sleep")
+    def test_photo_retries_transient_errors_then_streams_success(self, sleep):
+        url = "https://maps.googleapis.com/maps/api/place/photo"
+        image = b"\x89PNG\r\n\x1a\nbinary photo\x00\xff"
+        for status in (500, 503, 504):
+            with self.subTest(status=status):
+                sleep.reset_mock()
+                with responses.RequestsMock() as rsps:
+                    rsps.add(responses.GET, url, body="Unavailable", status=status)
+                    rsps.add(
+                        responses.GET, url, body=image, status=200,
+                        content_type="image/png",
+                    )
+
+                    chunks = self.client.places_photo("photo-reference", max_width=100)
+
+                    self.assertEqual(2, len(rsps.calls))
+                    sleep.assert_called_once()
+                    self.assertFalse(rsps.calls[1].response._content_consumed)
+                    self.assertEqual(image, b"".join(chunks))
+
+    @responses.activate
+    @mock.patch("googlemaps.client.time.sleep")
+    def test_photo_retries_503_then_raises_terminal_error(self, sleep):
+        url = "https://maps.googleapis.com/maps/api/place/photo"
+        responses.add(responses.GET, url, body="Unavailable", status=503)
+        responses.add(
+            responses.GET, url, body="<html>Photo not found</html>", status=404,
+            content_type="text/html",
+        )
+
+        with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+            self.client.places_photo("photo-reference", max_width=100)
+
+        self.assertEqual(404, error.exception.status_code)
+        self.assertEqual(2, len(responses.calls))
+        sleep.assert_called_once()
+        response = responses.calls[1].response
+        self.assertFalse(response._content_consumed)
+        self.assertTrue(response.raw.closed)
 
     @responses.activate
     def test_autocomplete(self):

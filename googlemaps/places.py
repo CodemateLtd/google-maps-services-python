@@ -19,6 +19,7 @@
 import warnings
 
 from googlemaps import convert
+from googlemaps import exceptions
 
 
 PLACES_FIND_FIELDS_BASIC = {"business_status",
@@ -496,6 +497,14 @@ def place(
     return client._request("/maps/api/place/details/json", params)
 
 
+def _places_photo_extract(response):
+    """Validate the HTTP status without consuming the streamed photo body."""
+    if not 200 <= response.status_code < 300:
+        response.close()
+        raise exceptions.HTTPError(response.status_code)
+    return response.iter_content()
+
+
 def places_photo(client, photo_reference, max_width=None, max_height=None):
     """
     Downloads a photo from the Places API.
@@ -509,6 +518,9 @@ def places_photo(client, photo_reference, max_width=None, max_height=None):
 
     :param max_height: Specifies the maximum desired height, in pixels.
     :type max_height: int
+
+    :raises googlemaps.exceptions.HTTPError: If the response has a non-2xx
+        HTTP status.
 
     :rtype: iterator containing the raw image data, which typically can be
         used to save an image file locally. For example:
@@ -532,16 +544,13 @@ def places_photo(client, photo_reference, max_width=None, max_height=None):
     if max_height:
         params["maxheight"] = max_height
 
-    # "extract_body" and "stream" args here are used to return an iterable
-    # response containing the image file data, rather than converting from
-    # json.
-    response = client._request(
+    # Stream the image data instead of decoding a JSON response.
+    return client._request(
         "/maps/api/place/photo",
         params,
-        extract_body=lambda response: response,
+        extract_body=_places_photo_extract,
         requests_kwargs={"stream": True},
     )
-    return response.iter_content()
 
 
 def places_autocomplete(
