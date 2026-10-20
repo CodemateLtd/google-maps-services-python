@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Added
+- Support `extra_computations` in forward geocoding for address descriptors and building/entrance information.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)

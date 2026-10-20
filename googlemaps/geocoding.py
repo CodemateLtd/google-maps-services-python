@@ -20,7 +20,7 @@ from googlemaps import convert
 
 
 def geocode(client, address=None, place_id=None, components=None, bounds=None, region=None,
-            language=None):
+            language=None, extra_computations=None):
     """
     Geocoding is the process of converting addresses
     (like ``"1600 Amphitheatre Parkway, Mountain View, CA"``) into geographic
@@ -49,6 +49,12 @@ def geocode(client, address=None, place_id=None, components=None, bounds=None, r
     :param language: The language in which to return results.
     :type language: string
 
+    :param extra_computations: Additional computations to return, as
+        ``ADDRESS_DESCRIPTORS``, ``BUILDING_AND_ENTRANCES``, or a list of these
+        values. Multiple values are sent as repeated query parameters.
+        See https://developers.google.com/maps/documentation/geocoding/guides-v3/requests-geocoding.
+    :type extra_computations: string or list of strings
+
     :rtype: result dict with the following keys:
             status: status code
             results: list of geocoding results
@@ -73,6 +79,16 @@ def geocode(client, address=None, place_id=None, components=None, bounds=None, r
 
     if language:
         params["language"] = language
+
+    if extra_computations is not None:
+        extra_computations = convert.as_list(extra_computations)
+        for computation in extra_computations:
+            if computation not in ("ADDRESS_DESCRIPTORS", "BUILDING_AND_ENTRANCES"):
+                raise ValueError(
+                    "Invalid extra_computations value: %r. Must be "
+                    "ADDRESS_DESCRIPTORS or BUILDING_AND_ENTRANCES." % computation
+                )
+        params["extra_computations"] = extra_computations
 
     return client._request("/maps/api/geocode/json", params)
 

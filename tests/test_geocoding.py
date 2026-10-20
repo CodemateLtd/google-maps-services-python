@@ -19,6 +19,7 @@
 """Tests for the geocoding module."""
 
 import datetime
+from urllib.parse import parse_qs, urlparse
 
 import responses
 
@@ -49,6 +50,80 @@ class GeocodingTest(TestCase):
             "key=%s&address=Sydney" % self.key,
             responses.calls[0].request.url,
         )
+
+    @responses.activate
+    def test_geocode_extra_computations_scalar(self):
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            json={"status": "OK", "results": []},
+            status=200,
+        )
+
+        for computation in ("ADDRESS_DESCRIPTORS", "BUILDING_AND_ENTRANCES"):
+            with self.subTest(computation=computation):
+                self.client.geocode("Sydney", extra_computations=computation)
+
+                query = parse_qs(urlparse(responses.calls[-1].request.url).query)
+                self.assertEqual([computation], query["extra_computations"])
+
+        self.assertEqual(2, len(responses.calls))
+
+    @responses.activate
+    def test_geocode_extra_computations_repeated_parameters(self):
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            json={"status": "OK", "results": []},
+            status=200,
+        )
+
+        computations = ["BUILDING_AND_ENTRANCES", "ADDRESS_DESCRIPTORS"]
+        self.client.geocode("Sydney", extra_computations=computations)
+
+        query = parse_qs(urlparse(responses.calls[-1].request.url).query)
+        self.assertCountEqual(
+            ["ADDRESS_DESCRIPTORS", "BUILDING_AND_ENTRANCES"],
+            query["extra_computations"],
+        )
+        self.assertEqual(
+            ["BUILDING_AND_ENTRANCES", "ADDRESS_DESCRIPTORS"], computations
+        )
+
+    @responses.activate
+    def test_geocode_extra_computations_none_or_empty_list(self):
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            json={"status": "OK", "results": []},
+            status=200,
+        )
+
+        for computations in (None, []):
+            with self.subTest(computations=computations):
+                self.client.geocode("Sydney", extra_computations=computations)
+
+                query = parse_qs(
+                    urlparse(responses.calls[-1].request.url).query,
+                    keep_blank_values=True,
+                )
+                self.assertNotIn("extra_computations", query)
+
+        self.assertEqual(2, len(responses.calls))
+
+    @responses.activate
+    def test_geocode_extra_computations_invalid_before_request(self):
+        for computations in (
+            "",
+            "address_descriptors",
+            "UNKNOWN",
+            ["ADDRESS_DESCRIPTORS", "UNKNOWN"],
+            1,
+        ):
+            with self.subTest(computations=computations):
+                with self.assertRaises(ValueError):
+                    self.client.geocode("Sydney", extra_computations=computations)
+                self.assertEqual(0, len(responses.calls))
 
     @responses.activate
     def test_reverse_geocode(self):
