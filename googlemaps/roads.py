@@ -77,17 +77,26 @@ def nearest_roads(client, points):
                        accepts_clientid=False,
                        extract_body=_roads_extract).get("snappedPoints", [])
 
-def speed_limits(client, place_ids):
-    """Returns the posted speed limit (in km/h) for given road segments.
+def speed_limits(client, place_ids, units=None):
+    """Returns the posted speed limit for given road segments.
 
     :param place_ids: The Place ID of the road segment. Place IDs are returned
         by the snap_to_roads function. You can pass up to 100 Place IDs.
     :type place_ids: str or list
 
+    :param units: The speed limit units, either "KPH" (kilometers per hour) or
+        "MPH" (miles per hour). If omitted or None, the server defaults to KPH.
+    :type units: str
+
     :rtype: list of speed limits.
     """
 
     params = [("placeId", place_id) for place_id in convert.as_list(place_ids)]
+
+    if units is not None:
+        if units not in ("KPH", "MPH"):
+            raise ValueError("units must be KPH or MPH")
+        params.append(("units", units))
 
     return client._request("/v1/speedLimits", params,
                        base_url=_ROADS_BASE_URL,
@@ -95,8 +104,8 @@ def speed_limits(client, place_ids):
                        extract_body=_roads_extract).get("speedLimits", [])
 
 
-def snapped_speed_limits(client, path):
-    """Returns the posted speed limit (in km/h) for given road segments.
+def snapped_speed_limits(client, path, units=None):
+    """Returns the posted speed limit for given road segments.
 
     The provided points will first be snapped to the most likely roads the
     vehicle was traveling along.
@@ -105,10 +114,19 @@ def snapped_speed_limits(client, path):
     :type path: a single location, or a list of locations, where a
         location is a string, dict, list, or tuple
 
+    :param units: The speed limit units, either "KPH" (kilometers per hour) or
+        "MPH" (miles per hour). If omitted or None, the server defaults to KPH.
+    :type units: str
+
     :rtype: dict with a list of speed limits and a list of the snapped points.
     """
 
     params = {"path": convert.location_list(path)}
+
+    if units is not None:
+        if units not in ("KPH", "MPH"):
+            raise ValueError("units must be KPH or MPH")
+        params["units"] = units
 
     return client._request("/v1/speedLimits", params,
                        base_url=_ROADS_BASE_URL,

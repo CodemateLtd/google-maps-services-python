@@ -18,6 +18,8 @@
 """Tests for the roads module."""
 
 
+from urllib.parse import parse_qs, urlsplit
+
 import responses
 
 import googlemaps
@@ -126,6 +128,81 @@ class RoadsTest(TestCase):
             "&key=%s" % self.key,
             responses.calls[0].request.url,
         )
+
+    @responses.activate
+    def test_speed_limits_units(self):
+        responses.add(
+            responses.GET,
+            "https://roads.googleapis.com/v1/speedLimits",
+            json={"speedLimits": []},
+        )
+
+        for units in ("MPH", "KPH"):
+            with self.subTest(units=units):
+                self.client.speed_limits(["id1", "id2", "id3"], units=units)
+                query = parse_qs(urlsplit(responses.calls[-1].request.url).query)
+                self.assertEqual([units], query["units"])
+                self.assertEqual(["id1", "id2", "id3"], query["placeId"])
+
+        self.assertEqual(2, len(responses.calls))
+
+    @responses.activate
+    def test_snapped_speed_limits_units(self):
+        responses.add(
+            responses.GET,
+            "https://roads.googleapis.com/v1/speedLimits",
+            json={"speedLimits": [], "snappedPoints": []},
+        )
+
+        for units in ("MPH", "KPH"):
+            with self.subTest(units=units):
+                self.client.snapped_speed_limits([(1, 2), (3, 4)], units=units)
+                query = parse_qs(urlsplit(responses.calls[-1].request.url).query)
+                self.assertEqual([units], query["units"])
+                self.assertEqual(["1,2|3,4"], query["path"])
+
+        self.assertEqual(2, len(responses.calls))
+
+    @responses.activate
+    def test_speed_limits_units_omitted(self):
+        responses.add(
+            responses.GET,
+            "https://roads.googleapis.com/v1/speedLimits",
+            json={"speedLimits": []},
+        )
+
+        self.client.speed_limits(["id1", "id2"], units=None)
+        query = parse_qs(
+            urlsplit(responses.calls[-1].request.url).query, keep_blank_values=True
+        )
+        self.assertNotIn("units", query)
+
+    @responses.activate
+    def test_snapped_speed_limits_units_omitted(self):
+        responses.add(
+            responses.GET,
+            "https://roads.googleapis.com/v1/speedLimits",
+            json={"speedLimits": [], "snappedPoints": []},
+        )
+
+        self.client.snapped_speed_limits([(1, 2), (3, 4)], units=None)
+        query = parse_qs(
+            urlsplit(responses.calls[-1].request.url).query, keep_blank_values=True
+        )
+        self.assertNotIn("units", query)
+
+    @responses.activate
+    def test_speed_limits_units_invalid_before_http(self):
+        for method, value in (
+            (self.client.speed_limits, ["id1", "id2"]),
+            (self.client.snapped_speed_limits, [(1, 2), (3, 4)]),
+        ):
+            for units in ("mph", "", "MPS", []):
+                with self.subTest(method=method.__name__, units=units):
+                    with self.assertRaises(ValueError):
+                        method(value, units=units)
+
+        self.assertEqual(0, len(responses.calls))
 
     def test_clientid_not_accepted(self):
         client = googlemaps.Client(client_id="asdf", client_secret="asdf")
