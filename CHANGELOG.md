@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Added
+- Add optional `KPH` or `MPH` units to Roads `speed_limits` and `snapped_speed_limits`, retaining the server's KPH default when omitted.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
