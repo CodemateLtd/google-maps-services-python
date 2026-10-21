@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- Add Address Validation feedback submission with the first response ID and a validation conclusion.
+
 ### Fixed
 - Raise API or HTTP exceptions for unsuccessful Address Validation responses instead of returning error payloads.
 

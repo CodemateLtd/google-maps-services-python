@@ -42,6 +42,13 @@ def _addressvalidation_extract(response):
     raise exceptions.HTTPError(response.status_code)
 
 
+def _addressvalidation_feedback_extract(response):
+    """Extract feedback without parsing an empty successful response."""
+    if 200 <= response.status_code < 300:
+        return {}
+    return _addressvalidation_extract(response)
+
+
 def addressvalidation(client, addressLines, regionCode=None , locality=None, enableUspsCass=None):
     """
     The Google Maps Address Validation API returns a verification of an address
@@ -76,4 +83,43 @@ def addressvalidation(client, addressLines, regionCode=None , locality=None, ena
                            base_url=_ADDRESSVALIDATION_BASE_URL,
                            extract_body=_addressvalidation_extract,
                            post_json=params)
+
+
+def addressvalidation_feedback(client, response_id, conclusion):
+    """Provide the final outcome of an address validation sequence.
+
+    Send feedback once, after the transaction concludes. Use the response ID
+    from the first validation response, not a later attempt in the sequence.
+    See https://developers.google.com/maps/documentation/address-validation/reference/rest/v1/TopLevel/provideValidationFeedback.
+
+    :param response_id: The ``responseId`` from the first validation response.
+    :type response_id: str
+
+    :param conclusion: One of ``VALIDATED_VERSION_USED``, ``USER_VERSION_USED``,
+        ``UNVALIDATED_VERSION_USED``, or ``UNUSED``.
+    :type conclusion: str
+
+    :raises ValueError: If the response ID is not a nonempty string or the
+        conclusion is not supported.
+    :raises googlemaps.exceptions.ApiError: If the API returns a structured error.
+    :raises googlemaps.exceptions.HTTPError: If an unsuccessful response does
+        not contain a structured API error.
+
+    :returns: An empty dictionary on success.
+    :rtype: dict
+    """
+    if not isinstance(response_id, str) or not response_id:
+        raise ValueError("response_id must be a nonempty string")
+    if conclusion not in (
+        "VALIDATED_VERSION_USED", "USER_VERSION_USED",
+        "UNVALIDATED_VERSION_USED", "UNUSED",
+    ):
+        raise ValueError("conclusion must be a supported validation conclusion")
+
+    return client._request(
+        "/v1:provideValidationFeedback", {},
+        base_url=_ADDRESSVALIDATION_BASE_URL,
+        extract_body=_addressvalidation_feedback_extract,
+        post_json={"responseId": response_id, "conclusion": conclusion},
+    )
     
