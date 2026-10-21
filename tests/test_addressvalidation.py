@@ -137,3 +137,105 @@ class AddressValidationTest(TestCase):
                 self.client.addressvalidation(["1600 Amphitheatre Parkway"])
 
         self.assertEqual(1, len(responses.calls))
+
+
+class AddressValidationFeedbackTest(TestCase):
+    def setUp(self):
+        self.client = googlemaps.Client("AIza-feedback-tests-non-secret")
+        self.url = (
+            "https://addressvalidation.googleapis.com/v1:provideValidationFeedback"
+        )
+
+    def test_feedback_submits_supported_conclusions(self):
+        for conclusion in (
+            "VALIDATED_VERSION_USED", "USER_VERSION_USED",
+            "UNVALIDATED_VERSION_USED", "UNUSED",
+        ):
+            with self.subTest(conclusion=conclusion):
+                with responses.RequestsMock() as http:
+                    http.add(
+                        responses.POST, self.url, body="", status=200,
+                        match=[responses.matchers.json_params_matcher({
+                            "responseId": "initial-response-id",
+                            "conclusion": conclusion,
+                        })],
+                    )
+
+                    self.assertEqual({}, self.client.addressvalidation_feedback(
+                        "initial-response-id", conclusion
+                    ))
+
+    @responses.activate
+    def test_feedback_accepts_no_content(self):
+        responses.add(responses.POST, self.url, status=204)
+
+        self.assertEqual({}, self.client.addressvalidation_feedback(
+            "initial-response-id", "UNUSED"
+        ))
+
+    @responses.activate
+    def test_feedback_rejects_invalid_response_ids_before_transport(self):
+        for response_id in ("", None, 123, []):
+            with self.subTest(response_id=response_id):
+                with self.assertRaises(ValueError):
+                    self.client.addressvalidation_feedback(response_id, "UNUSED")
+
+        self.assertEqual(0, len(responses.calls))
+
+    @responses.activate
+    def test_feedback_rejects_invalid_conclusions_before_transport(self):
+        for conclusion in (
+            "VALIDATION_CONCLUSION_UNSPECIFIED", "UNKNOWN",
+            "validated_version_used", None, [],
+        ):
+            with self.subTest(conclusion=conclusion):
+                with self.assertRaises(ValueError):
+                    self.client.addressvalidation_feedback(
+                        "initial-response-id", conclusion
+                    )
+
+        self.assertEqual(0, len(responses.calls))
+
+    @responses.activate
+    def test_feedback_raises_structured_api_errors(self):
+        responses.add(
+            responses.POST, self.url, status=400,
+            json={"error": {
+                "status": "INVALID_ARGUMENT",
+                "message": "The response ID is unknown.",
+            }},
+        )
+
+        with self.assertRaises(googlemaps.exceptions.ApiError) as error:
+            self.client.addressvalidation_feedback("unknown-response-id", "UNUSED")
+
+        self.assertEqual("INVALID_ARGUMENT", error.exception.status)
+        self.assertEqual("The response ID is unknown.", error.exception.message)
+
+    @responses.activate
+    def test_feedback_raises_http_errors_for_non_json_bodies(self):
+        responses.add(
+            responses.POST, self.url, status=403,
+            body="<html>Access denied</html>", content_type="text/html",
+        )
+
+        with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+            self.client.addressvalidation_feedback("initial-response-id", "UNUSED")
+
+        self.assertEqual(403, error.exception.status_code)
+
+    @responses.activate
+    def test_feedback_retries_transient_errors_before_extraction(self):
+        responses.add(
+            responses.POST, self.url, body="Unavailable", status=503,
+        )
+        responses.add(responses.POST, self.url, body="", status=200)
+
+        with mock.patch("googlemaps.client.time.sleep"):
+            self.assertEqual({}, self.client.addressvalidation_feedback(
+                "initial-response-id", "USER_VERSION_USED"
+            ))
+
+        self.assertEqual([503, 200], [
+            call.response.status_code for call in responses.calls
+        ])
