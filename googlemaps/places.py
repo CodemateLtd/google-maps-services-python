@@ -16,7 +16,6 @@
 #
 
 """Performs requests to the Google Places API."""
-import warnings
 
 from googlemaps import convert
 
@@ -36,7 +35,6 @@ PLACES_FIND_FIELDS_BASIC = {"business_status",
         "geometry/viewport/southwest/lng",
         "icon",
         "name",
-        "permanently_closed",
         "photos",
         "place_id",
         "plus_code",
@@ -70,7 +68,6 @@ PLACES_DETAIL_FIELDS_BASIC = {
     "geometry/viewport/southwest/lng",
     "icon",
     "name",
-    "permanently_closed",
     "photo",
     "place_id",
     "plus_code",
@@ -98,7 +95,6 @@ PLACES_DETAIL_FIELDS_ATMOSPHERE = {
     "price_level",
     "rating",
     "reservable",
-    "review",  # prefer "reviews" to match API documentation
     "reviews",
     "serves_beer",
     "serves_breakfast",
@@ -117,12 +113,6 @@ PLACES_DETAIL_FIELDS = (
     ^ PLACES_DETAIL_FIELDS_ATMOSPHERE
 )
 
-DEPRECATED_FIELDS = {"permanently_closed", "review"}
-DEPRECATED_FIELDS_MESSAGE = (
-    "Fields, %s, are deprecated. "
-    "Read more at https://developers.google.com/maps/deprecations."
-)
-
 
 def find_place(
     client, input, input_type, fields=None, location_bias=None, language=None
@@ -131,6 +121,9 @@ def find_place(
     A Find Place request takes a text input, and returns a place.
     The text input can be any kind of Places data, for example,
     a name, address, or phone number.
+
+    Requesting ``permanently_closed`` in ``fields`` raises ``ValueError``.
+    Use ``business_status`` instead.
 
     :param input: The text input specifying which place to search for (for
                   example, a name, address, or phone number).
@@ -167,13 +160,6 @@ def find_place(
         )
 
     if fields:
-        deprecated_fields = set(fields) & DEPRECATED_FIELDS
-        if deprecated_fields:
-            warnings.warn(
-                DEPRECATED_FIELDS_MESSAGE % str(list(deprecated_fields)),
-                DeprecationWarning,
-            )
-
         invalid_fields = set(fields) - PLACES_FIND_FIELDS
         if invalid_fields:
             raise ValueError(
@@ -437,6 +423,9 @@ def place(
     """
     Comprehensive details for an individual place.
 
+    Requesting ``permanently_closed`` or ``review`` in ``fields`` raises
+    ``ValueError``. Use ``business_status`` or ``reviews``, respectively.
+
     :param place_id: A textual identifier that uniquely identifies a place,
         returned from a Places search.
     :type place_id: string
@@ -467,13 +456,6 @@ def place(
     params = {"placeid": place_id}
 
     if fields:
-        deprecated_fields = set(fields) & DEPRECATED_FIELDS
-        if deprecated_fields:
-            warnings.warn(
-                DEPRECATED_FIELDS_MESSAGE % str(list(deprecated_fields)),
-                DeprecationWarning,
-            )
-
         invalid_fields = set(fields) - PLACES_DETAIL_FIELDS
         if invalid_fields:
             raise ValueError(
