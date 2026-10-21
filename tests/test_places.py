@@ -76,6 +76,15 @@ class PlacesTest(TestCase):
             self.client.find_place("restaurant", "textquery", location_bias="invalid")
 
     @responses.activate
+    def test_find_place_rejects_removed_fields_before_transport(self):
+        with self.assertRaises(ValueError):
+            self.client.find_place(
+                "restaurant", "textquery", fields=["permanently_closed"]
+            )
+
+        self.assertEqual(0, len(responses.calls))
+
+    @responses.activate
     def test_places_text_search(self):
         url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
         responses.add(
@@ -183,6 +192,20 @@ class PlacesTest(TestCase):
             self.client.place(
                 "ChIJN1t_tDeuEmsRUsoyG83frY4", fields=["geometry", "invalid"]
             )
+
+    @responses.activate
+    def test_place_rejects_removed_fields_before_transport(self):
+        for removed, replacement in (
+            ("permanently_closed", "business_status"),
+            ("review", "reviews"),
+        ):
+            with self.subTest(field=removed):
+                with self.assertRaises(ValueError):
+                    self.client.place(
+                        "public-sample-place", fields=[replacement, removed]
+                    )
+
+        self.assertEqual(0, len(responses.calls))
 
     @responses.activate
     def test_photo(self):

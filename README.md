@@ -147,6 +147,28 @@ are returned from the API.
 - [Places API](https://developers.google.com/places/)
 - [Maps Static API](https://developers.google.com/maps/documentation/maps-static/)
 
+### Migrating deprecated Places fields
+
+The next major release removes support for the following entries in `fields`.
+Replace them before upgrading. Removed names raise `ValueError` before an HTTP
+request is sent, even when mixed with supported fields.
+
+| Method | Removed field | Replacement |
+| --- | --- | --- |
+| `Client.find_place()`, `Client.place()` | `permanently_closed` | `business_status` |
+| `Client.place()` | `review` | `reviews` |
+
+`business_status` is a status string, not the old boolean. Its values are
+`OPERATIONAL`, `CLOSED_TEMPORARILY`, and `CLOSED_PERMANENTLY`. Compare the returned
+status with `"CLOSED_PERMANENTLY"` when checking for permanent closure.
+The field can be absent when no status data exists; a missing value does not
+establish that the business is open.
+
+This changes field selection, not the format of the API response. See the
+[Places field deprecation notice](https://developers.google.com/maps/deprecations#permanently_closed)
+and [Place Details response fields](https://developers.google.com/maps/documentation/places/web-service/legacy/details#Place)
+for migration details.
+
 ## Terms of Service
 
 This library uses Google Maps Platform services. Use of Google Maps Platform services through this library is subject to the Google Maps Platform [Terms of Service](https://cloud.google.com/maps-platform/terms).

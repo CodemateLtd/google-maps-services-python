@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Removed
+- **Breaking change for the next major release:** Remove `permanently_closed` from Find Place and Place Details field selection, and `review` from Place Details field selection. These inputs now raise `ValueError`; use `business_status` and `reviews` instead. See the [migration guidance](README.md#migrating-deprecated-places-fields).
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
