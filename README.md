@@ -130,6 +130,8 @@ are returned from the API.
 
 [Documentation for the `google-maps-services-python` library](https://googlemaps.github.io/google-maps-services-python/docs/index.html)
 
+[Upgrading from v3 to v4](#upgrading-from-v3-to-v4)
+
 ### Getting started
 - [Get Started with Google Maps Platform](https://developers.google.com/maps/gmp-get-started)
 - [Generating/restricting an API key](https://developers.google.com/maps/gmp-get-started#api-key)
@@ -146,6 +148,21 @@ are returned from the API.
 - [Roads API](https://developers.google.com/maps/documentation/roads/)
 - [Places API](https://developers.google.com/places/)
 - [Maps Static API](https://developers.google.com/maps/documentation/maps-static/)
+
+### Upgrading from v3 to v4
+
+Version 4.0.0 introduced two breaking changes:
+
+- **Python 2 support was removed.** Move to Python 3; see
+  [Requirements](#requirements) for the current minimum version.
+- **Places fields were removed.** Remove `alt_id`, `id`, `reference`, and `scope`
+  from `fields` in `Client.find_place()` and `Client.place()`; these names raise
+  `ValueError`. Update code that reads the old response keys.
+
+For place identifiers, use the returned
+[`place_id`](https://developers.google.com/maps/documentation/places/web-service/legacy/details#place_id).
+With `Client.place()`, request `fields=["place_id"]` and read
+`response["result"]["place_id"]`.
 
 ## Terms of Service
 
