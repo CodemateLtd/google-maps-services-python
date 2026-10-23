@@ -17,7 +17,7 @@
 
 """Tests for the maps module."""
 
-from types import GeneratorType
+from unittest import mock
 
 import responses
 
@@ -68,53 +68,109 @@ class MapsTest(TestCase):
             str(path),
         )
 
-    @responses.activate
-    def test_download(self):
+    def test_download_streams_binary_data_lazily(self):
         url = "https://maps.googleapis.com/maps/api/staticmap"
-        responses.add(responses.GET, url, status=200)
-
+        image = b"\x89PNG\r\n\x1a\nbinary map\x00\xff"
         path = StaticMapPath(
             points=[(62.107733, -145.541936), "Delta+Junction,AK"],
             weight=5,
             color="red",
         )
+        markers = [
+            StaticMapMarker(
+                locations=[(62.107733, -145.541936)], color="blue", label="S"
+            ),
+            StaticMapMarker(
+                locations=["Delta+Junction,AK"], size="tiny", color="green"
+            ),
+            StaticMapMarker(
+                locations=["Tok,AK"], size="mid", color="0xFFFF00", label="C"
+            ),
+        ]
 
-        m1 = StaticMapMarker(
-            locations=[(62.107733, -145.541936)], color="blue", label="S"
+        for status in (200, 299):
+            with self.subTest(status=status):
+                with responses.RequestsMock() as rsps:
+                    rsps.add(
+                        responses.GET, url, body=image, status=status,
+                        content_type="image/png",
+                    )
+                    chunks = self.client.static_map(
+                        size=(400, 400), zoom=6,
+                        center=(63.259591, -144.667969),
+                        maptype="hybrid", format="png", scale=2,
+                        visible=["Tok,AK"], path=path, markers=markers,
+                    )
+                    response = rsps.calls[0].response
+                    self.assertFalse(response._content_consumed)
+                    self.assertEqual(0, response.raw.tell())
+                    self.assertEqual(image, b"".join(chunks))
+
+    def test_download_rejects_http_errors_without_consuming_body(self):
+        url = "https://maps.googleapis.com/maps/api/staticmap"
+        errors = (
+            (300, "Multiple choices", "text/plain"),
+            (400, '{"error": "Invalid request"}', "application/json"),
+            (403, "Access denied", "text/plain"),
+            (404, "<html>Map not found</html>", "text/html"),
+            (429, "Too many requests", "text/plain"),
         )
+        for status, body, content_type in errors:
+            with self.subTest(status=status):
+                with responses.RequestsMock() as rsps:
+                    rsps.add(
+                        responses.GET, url, body=body, status=status,
+                        content_type=content_type,
+                    )
+                    with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+                        self.client.static_map(
+                            size=(400, 400), center=(0, 0), zoom=1
+                        )
+                    self.assertEqual(status, error.exception.status_code)
+                    self.assertEqual(1, len(rsps.calls))
+                    response = rsps.calls[0].response
+                    self.assertFalse(response._content_consumed)
+                    self.assertTrue(response.raw.closed)
 
-        m2 = StaticMapMarker(
-            locations=["Delta+Junction,AK"], size="tiny", color="green"
+    @mock.patch("googlemaps.client.time.sleep")
+    def test_download_retries_transient_errors_then_streams_success(self, sleep):
+        url = "https://maps.googleapis.com/maps/api/staticmap"
+        image = b"\x89PNG\r\n\x1a\nbinary map\x00\xff"
+        for status in (500, 503, 504):
+            with self.subTest(status=status):
+                with responses.RequestsMock() as rsps:
+                    rsps.add(responses.GET, url, body="Unavailable", status=status)
+                    rsps.add(
+                        responses.GET, url, body=image, status=200,
+                        content_type="image/png",
+                    )
+                    chunks = self.client.static_map(
+                        size=(400, 400), center=(0, 0), zoom=1
+                    )
+                    self.assertEqual(2, len(rsps.calls))
+                    self.assertFalse(rsps.calls[1].response._content_consumed)
+                    self.assertEqual(image, b"".join(chunks))
+
+    @responses.activate
+    @mock.patch("googlemaps.client.time.sleep")
+    def test_download_retries_503_then_raises_terminal_error(self, sleep):
+        url = "https://maps.googleapis.com/maps/api/staticmap"
+        responses.add(responses.GET, url, body="Unavailable", status=503)
+        responses.add(
+            responses.GET, url, body="<html>Map not found</html>", status=404,
+            content_type="text/html",
         )
+        with self.assertRaises(googlemaps.exceptions.HTTPError) as error:
+            self.client.static_map(size=(400, 400), center=(0, 0), zoom=1)
 
-        m3 = StaticMapMarker(
-            locations=["Tok,AK"], size="mid", color="0xFFFF00", label="C"
-        )
+        self.assertEqual(404, error.exception.status_code)
+        self.assertEqual(2, len(responses.calls))
+        response = responses.calls[1].response
+        self.assertFalse(response._content_consumed)
+        self.assertTrue(response.raw.closed)
 
-        response = self.client.static_map(
-            size=(400, 400),
-            zoom=6,
-            center=(63.259591, -144.667969),
-            maptype="hybrid",
-            format="png",
-            scale=2,
-            visible=["Tok,AK"],
-            path=path,
-            markers=[m1, m2, m3],
-        )
-
-        self.assertTrue(isinstance(response, GeneratorType))
-        self.assertEqual(1, len(responses.calls))
-        self.assertURLEqual(
-            "%s?center=63.259591%%2C-144.667969&format=png&maptype=hybrid&"
-            "markers=color%%3Ablue%%7Clabel%%3AS%%7C62.107733%%2C-145.541936&"
-            "markers=size%%3Atiny%%7Ccolor%%3Agreen%%7CDelta%%2BJunction%%2CAK&"
-            "markers=size%%3Amid%%7Ccolor%%3A0xFFFF00%%7Clabel%%3AC%%7CTok%%2CAK&"
-            "path=weight%%3A5%%7Ccolor%%3Ared%%7C62.107733%%2C-145.541936%%7CDelta%%2BJunction%%2CAK&"
-            "scale=2&size=400x400&visible=Tok%%2CAK&zoom=6&key=%s" % (url, self.key),
-            responses.calls[0].request.url,
-        )
-
+    @responses.activate
+    def test_download_rejects_invalid_parameters(self):
         with self.assertRaises(ValueError):
             self.client.static_map(size=(400, 400))
 

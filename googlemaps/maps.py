@@ -17,7 +17,7 @@
 
 """Performs requests to the Google Maps Static API."""
 
-from googlemaps import convert
+from googlemaps import convert, exceptions
 
 
 MAPS_IMAGE_FORMATS = {'png8', 'png', 'png32', 'gif', 'jpg', 'jpg-baseline'}
@@ -122,6 +122,14 @@ class StaticMapPath(StaticMapParam):
         self.params.append(convert.location_list(points))
 
 
+def _static_map_extract(response):
+    """Validate the HTTP status without consuming the streamed map body."""
+    if not 200 <= response.status_code < 300:
+        response.close()
+        raise exceptions.HTTPError(response.status_code)
+    return response.iter_content()
+
+
 def static_map(client, size,
                center=None, zoom=None, scale=None,
                format=None, maptype=None, language=None, region=None,
@@ -177,6 +185,9 @@ def static_map(client, size,
     :param style: defines a custom style to alter the presentation of
         a specific feature (roads, parks, and other features) of the map.
     :type style: list of dict
+
+    :raises googlemaps.exceptions.HTTPError: If the response has a non-2xx
+        HTTP status.
 
     :rtype: iterator containing the raw image data, which typically can be
         used to save an image file locally. For example:
@@ -238,10 +249,9 @@ def static_map(client, size,
     if style:
         params["style"] = convert.components(style)
 
-    response = client._request(
+    return client._request(
         "/maps/api/staticmap",
         params,
-        extract_body=lambda response: response,
+        extract_body=_static_map_extract,
         requests_kwargs={"stream": True},
     )
-    return response.iter_content()
