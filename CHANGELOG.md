@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixed
+- Clarify the README Requests dependency guidance and link to authoritative package metadata.
+
 ## [v4.2.0]
 ### Added
 - Add support for Maps Static API (#344)
