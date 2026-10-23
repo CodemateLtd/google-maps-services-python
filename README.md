@@ -65,7 +65,7 @@ For even more information on getting started with Google Maps Platform and gener
 
     $ pip install -U googlemaps
 
-Note that you will need requests 2.4.0 or higher if you want to specify connect/read timeouts.
+Requests is installed automatically; see the [package metadata](https://github.com/googlemaps/google-maps-services-python/blob/master/setup.py) for its supported version range.
 
 ## Usage
 
