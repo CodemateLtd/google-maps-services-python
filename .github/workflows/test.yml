@@ -27,30 +27,53 @@ jobs:
   matrix:
     name: "Run tests on Python ${{ matrix.python-version }}"
     runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: ${{ matrix.python-version }}
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.5", "3.7", "3.8", "3.9", "3.10", "3.15"]
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
-    
-    - name: Setup Python
-      uses: "actions/setup-python@v3"
-      with:
-        python-version: "${{ matrix.python-version }}"
-    
-    - name: Install dependencies
-      run: ./.github/scripts/install.sh
-    
-    - name: Run tests
+      uses: actions/checkout@v7.0.1
+
+    - name: Run tests and distribution check
       run: |
-        python3 -m nox --session "tests-${{ matrix.python-version }}"
-        python3 -m nox -e distribution
+        docker run --rm \
+          --env PYTHON_VERSION \
+          --volume "$GITHUB_WORKSPACE:/workspace" \
+          --workdir /workspace \
+          "python:${PYTHON_VERSION}-slim" \
+          sh -ec '
+            python -m pip install --upgrade pip setuptools wheel nox
+            python -m nox --session "tests-${PYTHON_VERSION}" distribution
+          '
+
+    - name: Upload coverage
+      if: matrix.python-version == '3.15'
+      run: |
+        docker run --rm \
+          --env GITHUB_ACTION \
+          --env GITHUB_RUN_ID \
+          --env GITHUB_SHA \
+          --env GITHUB_REPOSITORY \
+          --env GITHUB_REF \
+          --env GITHUB_HEAD_REF \
+          --volume "$GITHUB_WORKSPACE:/workspace" \
+          --workdir /workspace \
+          "python:${PYTHON_VERSION}-slim" \
+          sh -ec '
+            apt-get update
+            apt-get install -y --no-install-recommends git
+            git config --global --add safe.directory /workspace
+            python -m pip install --upgrade pip nox
+            python -m nox --session cover
+          '
   test:
     name: Wait for matrix to finish
     needs: [matrix]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-    - run: |
-        echo "Test matrix finished";
-        exit 0;
+    - run: test "$MATRIX_RESULT" = success
+      env:
+        MATRIX_RESULT: ${{ needs.matrix.result }}

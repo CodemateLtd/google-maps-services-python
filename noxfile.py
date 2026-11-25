@@ -14,7 +14,8 @@
 
 import nox
 
-SUPPORTED_PY_VERSIONS = ["3.7", "3.8", "3.9", "3.10"]
+SUPPORTED_PY_VERSIONS = ["3.5", "3.7", "3.8", "3.9", "3.10", "3.15"]
+nox.options.default_venv_backend = "venv"
 
 
 def _install_dev_packages(session):
@@ -33,13 +34,11 @@ def _install_doc_dependencies(session):
 
 @nox.session(python=SUPPORTED_PY_VERSIONS)
 def tests(session):
+    session.install("--upgrade", "pip", "setuptools", "wheel")
     _install_dev_packages(session)
     _install_test_dependencies(session)
 
-    session.install("pytest")
     session.run("pytest")
-
-    session.notify("cover")
 
 
 @nox.session
@@ -77,5 +76,6 @@ def docs(session):
 
 @nox.session()
 def distribution(session):
+    session.install("--upgrade", "pip", "setuptools", "wheel")
     session.run("bash", ".github/scripts/distribution.sh", external=True)
     session.run("python", "-c", "import googlemaps")
