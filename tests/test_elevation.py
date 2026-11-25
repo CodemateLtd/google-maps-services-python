@@ -88,9 +88,19 @@ class ElevationTest(TestCase):
             responses.calls[0].request.url,
         )
 
-    def test_elevation_along_path_single(self):
-        with self.assertRaises(googlemaps.exceptions.ApiError):
-            results = self.client.elevation_along_path([(40.714728, -73.998672)], 5)
+    @responses.activate
+    def test_elevation_along_path_api_error(self):
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/elevation/json",
+            body='{"status":"INVALID_REQUEST","error_message":"Invalid request."}',
+            status=200,
+            content_type="application/json",
+        )
+        with self.assertRaises(googlemaps.exceptions.ApiError) as error:
+            self.client.elevation_along_path([(40.714728, -73.998672)], 5)
+        self.assertEqual("INVALID_REQUEST", error.exception.status)
+        self.assertEqual("Invalid request.", error.exception.message)
 
     @responses.activate
     def test_elevation_along_path(self):

@@ -22,3 +22,25 @@ through a couple of legal hurdles, primarily a Contributor License Agreement
 Follow either of the two links above to access the appropriate CLA and
 instructions for how to sign and return it. Once we receive it, we'll be able
 to accept your pull requests.
+
+Testing
+-------
+
+CI tests CPython 3.5, 3.7–3.10 and 3.15; Python 3.5 remains the minimum.
+Install Nox with `python3.10 -m pip install nox`, then run
+`python3.10 -m nox --session tests-3.10 distribution`. Nox uses isolated
+standard-library virtual environments and installs compatible test/build tools.
+The matrix is a testing selection, not an upper bound on supported Python versions.
+
+CI runs the same sessions in disposable official Python containers. For example:
+
+```sh
+docker run --rm -v "$PWD:/workspace" -w /workspace python:3.5-slim sh -ec '
+  python -m pip install --upgrade pip setuptools wheel nox
+  python -m nox --session tests-3.5 distribution
+'
+```
+
+The unit suite needs no network access or Google API key. Coverage uploads are
+separate: `python -m nox --session cover`, invoked in CI only on Python 3.15.
+
