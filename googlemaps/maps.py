@@ -127,7 +127,7 @@ def _static_map_extract(response):
     if not 200 <= response.status_code < 300:
         response.close()
         raise exceptions.HTTPError(response.status_code)
-    return response.iter_content()
+    return response
 
 
 def static_map(client, size,
@@ -249,9 +249,10 @@ def static_map(client, size,
     if style:
         params["style"] = convert.components(style)
 
-    return client._request(
+    response = client._request(
         "/maps/api/staticmap",
         params,
         extract_body=_static_map_extract,
         requests_kwargs={"stream": True},
     )
+    return response.iter_content()
