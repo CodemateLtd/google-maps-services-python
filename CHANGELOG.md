@@ -1,5 +1,5 @@
 # Changelog
-All notable changes to this project will be documented in this file.
+For release notes after v4.2.0, see [GitHub Releases](https://github.com/googlemaps/google-maps-services-python/releases).
 
 ## [v4.2.0]
 ### Added
@@ -49,7 +49,7 @@ All notable changes to this project will be documented in this file.
 
 **Note:** Start of changelog is 2019-08-27, [v3.0.2].
 
-[Unreleased]: https://github.com/googlemaps/google-maps-services-python/compare/4.2.0...HEAD
+[Unreleased]: https://github.com/googlemaps/google-maps-services-python/compare/v4.10.0...HEAD
 [v4.2.0]: https://github.com/googlemaps/google-maps-services-python/compare/4.1.0...4.2.0
 [v4.1.0]: https://github.com/googlemaps/google-maps-services-python/compare/4.0.0...4.1.0
 [v4.0.0]: https://github.com/googlemaps/google-maps-services-python/compare/3.1.4...4.0.0
